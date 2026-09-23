@@ -37,7 +37,7 @@
   .del{color:var(--danger);background:none;border:none;width:auto;padding:4px 6px;font-size:1rem;}
   .day-header{display:flex;justify-content:space-between;align-items:center;font-size:.85rem;color:var(--muted);margin:12px 0 4px;gap:8px;}
   .day-header .info{display:flex;flex-direction:column;}
-  .badge{font-size:.72rem;padding:3px 8px;border-radius:20px;background:var(--accent-light);color:var(--accent);cursor:pointer;white-space:nowrap;}
+  .badge{font-size:.8rem;font-weight:600;padding:6px 12px;border-radius:20px;background:var(--accent-light);color:var(--accent);cursor:pointer;white-space:nowrap;}
   .badge.reimbursed{background:var(--ok-light);color:var(--ok);}
   .summary-grid{display:flex;gap:10px;margin-bottom:4px;}
   .summary-grid>div{flex:1;text-align:center;}
@@ -63,11 +63,15 @@
     <div><div class="val" id="sReimbursed">₹0</div><div class="lbl">Reimbursed</div></div>
     <div><div class="val" id="sPending">₹0</div><div class="lbl">Pending</div></div>
   </div>
+  <div style="text-align:center;font-size:.8rem;color:var(--muted);margin-top:8px;border-top:1px solid var(--border);padding-top:8px;" id="clearedTill">Cleared till: —</div>
 </div>
 
 <div class="card">
-  <label for="rate">Default rate per km (₹)</label>
-  <input type="number" id="rate" step="0.01" placeholder="e.g. 11.11">
+  <label for="fuelPrice">Default fuel price (₹ per litre)</label>
+  <input type="number" id="fuelPrice" step="0.01" placeholder="e.g. 100">
+
+  <label for="avgKmpl">Default average (km per litre)</label>
+  <input type="number" id="avgKmpl" step="0.1" placeholder="30">
 
   <label for="initOdo">Vehicle's current meter reading (km)</label>
   <input type="number" id="initOdo" step="0.1" placeholder="e.g. 13420">
@@ -104,18 +108,26 @@
     </label>
   </div>
 
-  <label for="tripRate">Price per km for this trip (₹)</label>
-  <input type="number" id="tripRate" step="0.01" placeholder="e.g. 11.11">
-  <div class="hint">Prefilled from your default rate — edit here to bill this one trip differently.</div>
+  <div class="row">
+    <div><label for="tripFuelPrice">Fuel price (₹/litre) this trip</label><input type="number" id="tripFuelPrice" step="0.01" placeholder="e.g. 100"></div>
+    <div><label for="tripAvg">Average (km/l) this trip</label><input type="number" id="tripAvg" step="0.1" placeholder="30"></div>
+  </div>
+  <div class="hint">Prefilled from your defaults — edit here if fuel price or mileage differs for this trip.</div>
 
   <button onclick="addTrip()">Add Trip</button>
 </div>
 
 <div class="card">
+  <div class="hint" style="margin-top:0;">Tap 💰 <b>Mark Reimbursed</b> under any date once you've received payment for that day's trips — you'll enter the amount and date received.</div>
   <div id="tripsList"></div>
 </div>
 
 <div class="card">
+  <label style="margin-bottom:6px;">Export range (leave blank for all data)</label>
+  <div class="row">
+    <div><label for="rangeFrom">From</label><input type="date" id="rangeFrom"></div>
+    <div><label for="rangeTo">To</label><input type="date" id="rangeTo"></div>
+  </div>
   <div class="btn-row">
     <button class="secondary" onclick="copySummary()">Copy Summary</button>
     <button class="secondary" onclick="exportExcel()">Export Excel</button>
@@ -137,8 +149,11 @@
     <input type="date" id="reimbDate">
     <label for="reimbAmt">Amount received (₹)</label>
     <input type="number" id="reimbAmt" step="0.01">
+    <label for="reimbNote">Notes (optional)</label>
+    <input type="text" id="reimbNote" placeholder="e.g. paid via NEFT, ref #1234">
     <div class="btn-row">
       <button class="secondary" onclick="closeModal()">Cancel</button>
+      <button style="background:var(--danger)" id="unmarkBtn" onclick="unmarkFromModal()">Unmark</button>
       <button class="ok" onclick="saveReimb()">Save</button>
     </div>
   </div>
@@ -147,7 +162,7 @@
 <div class="toast" id="toast"></div>
 
 <script>
-  const RATE_KEY='travel_rate', TRIPS_KEY='travel_trips', REIMB_KEY='travel_reimb', INIT_ODO_KEY='travel_init_odo';
+  const FUEL_KEY='travel_fuel_price', AVG_KEY='travel_avg_kmpl', TRIPS_KEY='travel_trips', REIMB_KEY='travel_reimb', INIT_ODO_KEY='travel_init_odo';
   let mode='odo', modalDate=null;
 
   const todayStr=()=>new Date().toISOString().slice(0,10);
@@ -162,11 +177,19 @@
   function showToast(msg){const t=document.getElementById('toast');t.textContent=msg;t.classList.add('show');setTimeout(()=>t.classList.remove('show'),1700);}
 
   document.getElementById('date').value=todayStr();
-  const savedRate=ls_get(RATE_KEY);
-  if(savedRate){document.getElementById('rate').value=savedRate;document.getElementById('tripRate').value=savedRate;}
-  document.getElementById('rate').addEventListener('change',e=>{
-    ls_set(RATE_KEY,e.target.value);
-    document.getElementById('tripRate').value=e.target.value;
+  const savedFuel=ls_get(FUEL_KEY);
+  if(savedFuel){document.getElementById('fuelPrice').value=savedFuel;document.getElementById('tripFuelPrice').value=savedFuel;}
+  const savedAvg=ls_get(AVG_KEY);
+  const avgDefault=savedAvg||'30';
+  document.getElementById('avgKmpl').value=avgDefault;
+  document.getElementById('tripAvg').value=avgDefault;
+  document.getElementById('fuelPrice').addEventListener('change',e=>{
+    ls_set(FUEL_KEY,e.target.value);
+    document.getElementById('tripFuelPrice').value=e.target.value;
+  });
+  document.getElementById('avgKmpl').addEventListener('change',e=>{
+    ls_set(AVG_KEY,e.target.value);
+    document.getElementById('tripAvg').value=e.target.value;
   });
   const savedInitOdo=ls_get(INIT_ODO_KEY);
   if(savedInitOdo) document.getElementById('initOdo').value=savedInitOdo;
@@ -199,11 +222,14 @@
   setMode('odo');
 
   function addTrip(){
-    const rate=parseFloat(document.getElementById('tripRate').value);
+    const fuelPrice=parseFloat(document.getElementById('tripFuelPrice').value);
+    const avg=parseFloat(document.getElementById('tripAvg').value);
     const date=document.getElementById('date').value||todayStr();
     const from=document.getElementById('from').value.trim();
     const to=document.getElementById('to').value.trim();
-    if(!rate||rate<=0){showToast('Enter a valid price per km');return;}
+    if(!fuelPrice||fuelPrice<=0){showToast('Enter a valid fuel price');return;}
+    if(!avg||avg<=0){showToast('Enter a valid average (km/l)');return;}
+    const rate=fuelPrice/avg;
 
     let distance,startOdo=null,endOdo=null;
     if(mode==='odo'){
@@ -220,12 +246,13 @@
 
     const cost=distance*rate;
     const trips=loadTrips();
-    trips.push({id:Date.now(),date,from,to,distance,cost,rate,startOdo,endOdo});
+    trips.push({id:Date.now(),date,from,to,distance,cost,rate,fuelPrice,avg,startOdo,endOdo});
     saveTrips(trips);
 
     document.getElementById('from').value='';
     document.getElementById('to').value='';
-    document.getElementById('tripRate').value=ls_get(RATE_KEY)||'';
+    document.getElementById('tripFuelPrice').value=ls_get(FUEL_KEY)||'';
+    document.getElementById('tripAvg').value=ls_get(AVG_KEY)||'30';
     if(mode==='odo'){document.getElementById('startOdo').value=endOdo;document.getElementById('endOdo').value='';}
     else{document.getElementById('distance').value='';document.getElementById('roundtrip').checked=false;}
 
@@ -241,17 +268,26 @@
   function openModal(date,defaultAmt){
     modalDate=date;
     document.getElementById('reimbTitle').textContent='Mark '+date+' as reimbursed';
-    document.getElementById('reimbDate').value=todayStr();
-    document.getElementById('reimbAmt').value=defaultAmt.toFixed(2);
+    const r=loadReimb();
+    const existing=r[date]&&r[date].reimbursed;
+    document.getElementById('reimbDate').value=existing?r[date].date:todayStr();
+    document.getElementById('reimbAmt').value=existing?r[date].amount.toFixed(2):defaultAmt.toFixed(2);
+    document.getElementById('reimbNote').value=existing?(r[date].note||''):'';
+    document.getElementById('unmarkBtn').style.display=existing?'block':'none';
     document.getElementById('reimbModal').classList.add('show');
   }
   function closeModal(){document.getElementById('reimbModal').classList.remove('show');modalDate=null;}
+  function unmarkFromModal(){
+    unmarkReimb(modalDate);
+    closeModal();
+  }
   function saveReimb(){
     const d=document.getElementById('reimbDate').value;
     const amt=parseFloat(document.getElementById('reimbAmt').value);
+    const note=document.getElementById('reimbNote').value.trim();
     if(!d||isNaN(amt)){showToast('Fill both fields');return;}
     const r=loadReimb();
-    r[modalDate]={reimbursed:true,date:d,amount:amt};
+    r[modalDate]={reimbursed:true,date:d,amount:amt,note};
     saveReimbData(r);
     closeModal();
     render();
@@ -270,9 +306,23 @@
     }
   }
 
+  function getClearedTill(){
+    const trips=loadTrips(),reimb=loadReimb();
+    if(trips.length===0) return null;
+    const dates=[...new Set(trips.map(t=>t.date))].sort();
+    let cleared=null;
+    for(const d of dates){
+      if(reimb[d]&&reimb[d].reimbursed) cleared=d;
+      else break;
+    }
+    return cleared;
+  }
+
   function render(){
     const trips=loadTrips(), reimb=loadReimb();
     const listEl=document.getElementById('tripsList');
+    const clearedTill=getClearedTill();
+    document.getElementById('clearedTill').textContent=clearedTill?`✓ Cleared till ${clearedTill}`:'Cleared till: —';
     if(trips.length===0){
       listEl.innerHTML='<div class="empty">No trips logged yet.</div>';
       document.getElementById('sClaimed').textContent=fmt(0);
@@ -292,18 +342,20 @@
         dayTotal+=t.cost;
         const label=(t.from||t.to)?`${t.from||'—'} → ${t.to||'—'}`:'Trip';
         const meterInfo=t.startOdo!=null?`${t.startOdo}→${t.endOdo}`:'';
-        rows+=`<tr><td>${label}${meterInfo?`<br><span style="color:var(--muted);font-size:.72rem">${meterInfo} km</span>`:''}</td><td>${t.distance.toFixed(1)} km</td><td class="cost">${fmt(t.cost)}</td><td><button class="del" onclick="deleteTrip(${t.id})">✕</button></td></tr>`;
+        const fuelInfo=`@ ₹${t.fuelPrice}/l, ${t.avg} km/l`;
+        rows+=`<tr><td>${label}<br><span style="color:var(--muted);font-size:.72rem">${meterInfo?meterInfo+' km · ':''}${fuelInfo}</span></td><td>${t.distance.toFixed(1)} km</td><td class="cost">${fmt(t.cost)}</td><td><button class="del" onclick="deleteTrip(${t.id})">✕</button></td></tr>`;
       });
       claimed+=dayTotal;
       const rInfo=reimb[date];
       let badge;
       if(rInfo&&rInfo.reimbursed){
         reimbursedTotal+=rInfo.amount;
-        badge=`<span class="badge reimbursed" onclick="unmarkReimb('${date}')">✓ Reimbursed ${fmt(rInfo.amount)} (${rInfo.date}) — tap to undo</span>`;
+        const noteHtml=rInfo.note?`<br><span style="font-weight:400;font-size:.72rem;">📝 ${rInfo.note}</span>`:'';
+        badge=`<span class="badge reimbursed" onclick="openModal('${date}',${dayTotal})">✓ Reimbursed ${fmt(rInfo.amount)} (${rInfo.date}) — tap to edit${noteHtml}</span>`;
       } else {
-        badge=`<span class="badge" onclick="openModal('${date}',${dayTotal})">Mark reimbursed</span>`;
+        badge=`<span class="badge" onclick="openModal('${date}',${dayTotal})">💰 Mark Reimbursed</span>`;
       }
-      html+=`<div class="day-group"><div class="day-header"><div class="info"><span>${date}</span></div>${badge}</div><div style="display:flex;justify-content:space-between;color:var(--muted);font-size:.78rem;margin-bottom:4px;"><span>Day total</span><span>${fmt(dayTotal)}</span></div><table><tbody>${rows}</tbody></table></div>`;
+      html+=`<div class="day-group"><div class="day-header" style="align-items:flex-start;flex-direction:column;gap:6px;"><div style="display:flex;justify-content:space-between;width:100%;"><span style="font-weight:600;color:var(--text);">${date}</span><span>Day total: ${fmt(dayTotal)}</span></div>${badge}</div><table><tbody>${rows}</tbody></table></div>`;
     });
     listEl.innerHTML=html;
     document.getElementById('sClaimed').textContent=fmt(claimed);
@@ -311,13 +363,26 @@
     document.getElementById('sPending').textContent=fmt(claimed-reimbursedTotal);
   }
 
+  function getRangeFilteredTrips(){
+    const from=document.getElementById('rangeFrom').value;
+    const to=document.getElementById('rangeTo').value;
+    let trips=loadTrips();
+    if(from) trips=trips.filter(t=>t.date>=from);
+    if(to) trips=trips.filter(t=>t.date<=to);
+    return trips;
+  }
+
   async function copySummary(){
-    const trips=loadTrips(),reimb=loadReimb();
-    if(trips.length===0){showToast('Nothing to copy');return;}
+    const trips=getRangeFilteredTrips(),reimb=loadReimb();
+    if(trips.length===0){showToast('Nothing to copy for this range');return;}
     const byDate={};
     trips.forEach(t=>{(byDate[t.date]=byDate[t.date]||[]).push(t);});
     const dates=Object.keys(byDate).sort();
-    let text='Travel Reimbursement Summary\n\n',claimed=0,reimbursedTotal=0;
+    let text='Travel Reimbursement Summary\n';
+    const from=document.getElementById('rangeFrom').value, to=document.getElementById('rangeTo').value;
+    if(from||to) text+=`Range: ${from||'start'} to ${to||'today'}\n`;
+    text+='\n';
+    let claimed=0,reimbursedTotal=0;
     dates.forEach(date=>{
       text+=`${date}\n`;
       let dayTotal=0;
@@ -327,7 +392,7 @@
         dayTotal+=t.cost;
       });
       const r=reimb[date];
-      text+=`  Day total: ${fmt(dayTotal)}${r&&r.reimbursed?` — Reimbursed ${fmt(r.amount)} on ${r.date}`:' — Pending'}\n\n`;
+      text+=`  Day total: ${fmt(dayTotal)}${r&&r.reimbursed?` — Reimbursed ${fmt(r.amount)} on ${r.date}${r.note?` (${r.note})`:''}`:' — Pending'}\n\n`;
       claimed+=dayTotal;
       if(r&&r.reimbursed) reimbursedTotal+=r.amount;
     });
@@ -337,27 +402,30 @@
   }
 
   async function exportExcel(){
-    const trips=loadTrips(),reimb=loadReimb();
-    if(trips.length===0){showToast('Nothing to export');return;}
+    const trips=getRangeFilteredTrips(),reimb=loadReimb();
+    if(trips.length===0){showToast('Nothing to export for this range');return;}
     const rows=trips.slice().sort((a,b)=>a.date.localeCompare(b.date)).map(t=>{
       const r=reimb[t.date];
       return {
         Date:t.date,From:t.from,To:t.to,'Distance (km)':+t.distance.toFixed(1),
-        'Rate (₹/km)':t.rate,'Cost (₹)':+t.cost.toFixed(2),
+        'Fuel Price (₹/l)':t.fuelPrice,'Average (km/l)':t.avg,
+        'Rate (₹/km)':+t.rate.toFixed(2),'Cost (₹)':+t.cost.toFixed(2),
         'Start Meter':t.startOdo??'',
         'End Meter':t.endOdo??'',
         'Reimbursement Status':r&&r.reimbursed?'Reimbursed':'Pending',
         'Reimbursed Date':r&&r.reimbursed?r.date:'',
-        'Reimbursed Amount (₹)':r&&r.reimbursed?r.amount:''
+        'Reimbursed Amount (₹)':r&&r.reimbursed?r.amount:'',
+        'Notes':r&&r.reimbursed?(r.note||''):''
       };
     });
     const claimed=trips.reduce((s,t)=>s+t.cost,0);
-    const reimbursedTotal=Object.values(reimb).filter(r=>r.reimbursed).reduce((s,r)=>s+r.amount,0);
+    const tripDates=new Set(trips.map(t=>t.date));
+    const reimbursedTotal=Object.entries(reimb).filter(([d,r])=>r.reimbursed&&tripDates.has(d)).reduce((s,[d,r])=>s+r.amount,0);
     rows.push({});
     rows.push({Date:'TOTAL',From:'',To:'',
-      'Distance (km)':'','Rate (₹/km)':'','Cost (₹)':+claimed.toFixed(2),
+      'Distance (km)':'','Fuel Price (₹/l)':'','Average (km/l)':'','Rate (₹/km)':'','Cost (₹)':+claimed.toFixed(2),
       'Start Meter':'','End Meter':'','Reimbursement Status':'',
-      'Reimbursed Date':'','Reimbursed Amount (₹)':+reimbursedTotal.toFixed(2)});
+      'Reimbursed Date':'','Reimbursed Amount (₹)':+reimbursedTotal.toFixed(2),'Notes':''});
     const ws=XLSX.utils.json_to_sheet(rows);
     const wb=XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb,ws,'Travel Log');
@@ -376,7 +444,7 @@
   }
 
   function backupData(){
-    const payload={rate:ls_get(RATE_KEY),trips:loadTrips(),reimb:loadReimb(),exportedAt:new Date().toISOString()};
+    const payload={fuelPrice:ls_get(FUEL_KEY),avg:ls_get(AVG_KEY),trips:loadTrips(),reimb:loadReimb(),exportedAt:new Date().toISOString()};
     downloadBlob(new Blob([JSON.stringify(payload,null,2)],{type:'application/json'}),`travel-backup-${todayStr()}.json`);
     showToast('Backup downloaded');
   }
@@ -390,7 +458,8 @@
         const data=JSON.parse(e.target.result);
         if(!Array.isArray(data.trips)) throw new Error('bad format');
         if(!confirm('This will replace your current trips and reimbursement data with the backup. Continue?')) return;
-        if(data.rate) ls_set(RATE_KEY,data.rate);
+        if(data.fuelPrice) ls_set(FUEL_KEY,data.fuelPrice);
+        if(data.avg) ls_set(AVG_KEY,data.avg);
         saveTrips(data.trips);
         saveReimbData(data.reimb||{});
         render();
