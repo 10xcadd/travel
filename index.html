@@ -97,7 +97,8 @@
       <div><label for="startOdo">Start meter reading (km)</label><input type="number" id="startOdo" step="0.1" placeholder="e.g. 13420"></div>
       <div><label for="endOdo">End meter reading (km)</label><input type="number" id="endOdo" step="0.1" placeholder="e.g. 13427"></div>
     </div>
-    <div class="hint">Start auto-fills from your last saved reading.</div>
+    <div class="hint">Start reading auto-fills from your last saved trip — it's just a suggestion, so edit it anytime the actual meter is different (e.g. after personal use of the vehicle).</div>
+    <button class="secondary" style="margin-bottom:10px;" onclick="clearStartOdo()">Clear Start Reading</button>
   </div>
 
   <div id="distFields" style="display:none;">
@@ -200,6 +201,11 @@
     ls_set(INIT_ODO_KEY,v);
     if(loadTrips().length===0) document.getElementById('startOdo').value=v;
     showToast('Starting meter set to '+v+' km');
+  }
+
+  function clearStartOdo(){
+    document.getElementById('startOdo').value='';
+    document.getElementById('startOdo').focus();
   }
 
   function setMode(m){
