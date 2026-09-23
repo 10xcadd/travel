@@ -1,0 +1,414 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#2563eb">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Travel Log">
+<link rel="manifest" href="manifest.json">
+<title>Travel Reimbursement</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<style>
+  :root{--bg:#f5f6f8;--card:#fff;--text:#1a1d23;--muted:#6b7280;--accent:#2563eb;--accent-light:#eaf0fe;--border:#e5e7eb;--danger:#dc2626;--ok:#16a34a;--ok-light:#e8f8ee;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px);}
+  @media (prefers-color-scheme: dark){:root:not([data-theme="light"]){--bg:#14161a;--card:#1e2127;--text:#edeef0;--muted:#9aa1ac;--accent:#5b8bf5;--accent-light:#23304d;--border:#2c2f36;--ok:#3fbf72;--ok-light:#173021;}}
+  :root[data-theme="dark"]{--bg:#14161a;--card:#1e2127;--text:#edeef0;--muted:#9aa1ac;--accent:#5b8bf5;--accent-light:#23304d;--border:#2c2f36;--ok:#3fbf72;--ok-light:#173021;}
+  *{box-sizing:border-box;}
+  html{scroll-padding-top:env(safe-area-inset-top,0px);height:100%;}
+  body{margin:0;background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;padding:16px;min-height:100%;}
+  h1{font-size:1.25rem;margin:4px 0 14px;}
+  .card{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:16px;margin-bottom:14px;}
+  label{font-size:.78rem;color:var(--muted);display:block;margin-bottom:4px;}
+  input,select{width:100%;padding:10px 12px;border-radius:10px;border:1px solid var(--border);background:var(--bg);color:var(--text);font-size:1rem;margin-bottom:10px;}
+  .row{display:flex;gap:10px;}
+  .row>div{flex:1;}
+  button{background:var(--accent);color:#fff;border:none;border-radius:10px;padding:11px 16px;font-size:.92rem;font-weight:600;width:100%;cursor:pointer;}
+  button.secondary{background:var(--accent-light);color:var(--accent);}
+  button.ok{background:var(--ok);}
+  .btn-row{display:flex;gap:8px;margin-top:4px;flex-wrap:wrap;}
+  .btn-row button{width:auto;flex:1;min-width:100px;}
+  .tabs{display:flex;gap:8px;margin-bottom:10px;}
+  .tab{flex:1;text-align:center;padding:8px;border-radius:10px;background:var(--accent-light);color:var(--accent);font-size:.85rem;font-weight:600;cursor:pointer;}
+  .tab.active{background:var(--accent);color:#fff;}
+  table{width:100%;border-collapse:collapse;font-size:.82rem;}
+  th,td{text-align:left;padding:7px 4px;border-bottom:1px solid var(--border);}
+  th{color:var(--muted);font-weight:500;}
+  .cost{font-weight:600;}
+  .del{color:var(--danger);background:none;border:none;width:auto;padding:4px 6px;font-size:1rem;}
+  .day-header{display:flex;justify-content:space-between;align-items:center;font-size:.85rem;color:var(--muted);margin:12px 0 4px;gap:8px;}
+  .day-header .info{display:flex;flex-direction:column;}
+  .badge{font-size:.72rem;padding:3px 8px;border-radius:20px;background:var(--accent-light);color:var(--accent);cursor:pointer;white-space:nowrap;}
+  .badge.reimbursed{background:var(--ok-light);color:var(--ok);}
+  .summary-grid{display:flex;gap:10px;margin-bottom:4px;}
+  .summary-grid>div{flex:1;text-align:center;}
+  .summary-grid .val{font-size:1.05rem;font-weight:700;}
+  .summary-grid .lbl{font-size:.72rem;color:var(--muted);}
+  .empty{color:var(--muted);font-size:.9rem;text-align:center;padding:16px 0;}
+  .toast{position:fixed;bottom:calc(20px + env(safe-area-inset-bottom,0px));left:50%;transform:translateX(-50%);background:var(--text);color:var(--bg);padding:8px 16px;border-radius:20px;font-size:.85rem;opacity:0;transition:opacity .2s;pointer-events:none;max-width:90%;text-align:center;}
+  .toast.show{opacity:.95;}
+  .modal-bg{display:none;position:fixed;inset:0;background:rgba(0,0,0,.4);align-items:center;justify-content:center;z-index:10;padding:16px;}
+  .modal-bg.show{display:flex;}
+  .modal{background:var(--card);border-radius:14px;padding:18px;width:100%;max-width:340px;}
+  .modal h3{margin:0 0 12px;font-size:1rem;}
+  .hint{font-size:.72rem;color:var(--muted);margin:-6px 0 10px;}
+</style>
+</head>
+<body>
+
+<h1>🚗 Travel Reimbursement</h1>
+
+<div class="card">
+  <div class="summary-grid">
+    <div><div class="val" id="sClaimed">₹0</div><div class="lbl">Claimed</div></div>
+    <div><div class="val" id="sReimbursed">₹0</div><div class="lbl">Reimbursed</div></div>
+    <div><div class="val" id="sPending">₹0</div><div class="lbl">Pending</div></div>
+  </div>
+</div>
+
+<div class="card">
+  <label for="rate">Default rate per km (₹)</label>
+  <input type="number" id="rate" step="0.01" placeholder="e.g. 11.11">
+
+  <label for="initOdo">Vehicle's current meter reading (km)</label>
+  <input type="number" id="initOdo" step="0.1" placeholder="e.g. 13420">
+  <div class="hint">Set this once to your vehicle's current odometer. It becomes the start reading for your next trip — after that, it auto-continues from your last trip's end reading.</div>
+  <button class="secondary" onclick="setInitOdo()">Set Starting Meter</button>
+</div>
+
+<div class="card">
+  <div class="tabs">
+    <div class="tab active" id="tabOdo" onclick="setMode('odo')">Odometer</div>
+    <div class="tab" id="tabDist" onclick="setMode('dist')">Direct Distance</div>
+  </div>
+
+  <label for="date">Date</label>
+  <input type="date" id="date">
+  <div class="row">
+    <div><label for="from">From</label><input type="text" id="from" placeholder="e.g. Office"></div>
+    <div><label for="to">To</label><input type="text" id="to" placeholder="e.g. XYZ College"></div>
+  </div>
+
+  <div id="odoFields">
+    <div class="row">
+      <div><label for="startOdo">Start meter reading (km)</label><input type="number" id="startOdo" step="0.1" placeholder="e.g. 13420"></div>
+      <div><label for="endOdo">End meter reading (km)</label><input type="number" id="endOdo" step="0.1" placeholder="e.g. 13427"></div>
+    </div>
+    <div class="hint">Start auto-fills from your last saved reading.</div>
+  </div>
+
+  <div id="distFields" style="display:none;">
+    <label for="distance">Distance (km)</label>
+    <input type="number" id="distance" step="0.1" placeholder="e.g. 7">
+    <label style="display:flex;align-items:center;gap:8px;font-size:.85rem;color:var(--text);margin-bottom:10px;">
+      <input type="checkbox" id="roundtrip" style="width:auto;margin:0;"> Round trip (double distance)
+    </label>
+  </div>
+
+  <label for="tripRate">Price per km for this trip (₹)</label>
+  <input type="number" id="tripRate" step="0.01" placeholder="e.g. 11.11">
+  <div class="hint">Prefilled from your default rate — edit here to bill this one trip differently.</div>
+
+  <button onclick="addTrip()">Add Trip</button>
+</div>
+
+<div class="card">
+  <div id="tripsList"></div>
+</div>
+
+<div class="card">
+  <div class="btn-row">
+    <button class="secondary" onclick="copySummary()">Copy Summary</button>
+    <button class="secondary" onclick="exportExcel()">Export Excel</button>
+  </div>
+  <div class="btn-row">
+    <button class="secondary" onclick="backupData()">Backup (JSON)</button>
+    <button class="secondary" onclick="document.getElementById('importFile').click()">Restore Backup</button>
+  </div>
+  <div class="btn-row">
+    <button style="background:var(--danger)" onclick="clearAll()">Clear All Data</button>
+  </div>
+  <input type="file" id="importFile" accept=".json" style="display:none" onchange="restoreBackup(event)">
+</div>
+
+<div class="modal-bg" id="reimbModal">
+  <div class="modal">
+    <h3 id="reimbTitle">Mark as reimbursed</h3>
+    <label for="reimbDate">Date received</label>
+    <input type="date" id="reimbDate">
+    <label for="reimbAmt">Amount received (₹)</label>
+    <input type="number" id="reimbAmt" step="0.01">
+    <div class="btn-row">
+      <button class="secondary" onclick="closeModal()">Cancel</button>
+      <button class="ok" onclick="saveReimb()">Save</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+  const RATE_KEY='travel_rate', TRIPS_KEY='travel_trips', REIMB_KEY='travel_reimb', INIT_ODO_KEY='travel_init_odo';
+  let mode='odo', modalDate=null;
+
+  const todayStr=()=>new Date().toISOString().slice(0,10);
+  const ls_get=(k)=>{try{return localStorage.getItem(k);}catch(e){return null;}};
+  const ls_set=(k,v)=>{try{localStorage.setItem(k,v);}catch(e){}};
+  const loadTrips=()=>{try{return JSON.parse(ls_get(TRIPS_KEY)||'[]');}catch(e){return[];}};
+  const saveTrips=(t)=>ls_set(TRIPS_KEY,JSON.stringify(t));
+  const loadReimb=()=>{try{return JSON.parse(ls_get(REIMB_KEY)||'{}');}catch(e){return{};}};
+  const saveReimbData=(r)=>ls_set(REIMB_KEY,JSON.stringify(r));
+  const fmt=(n)=>'₹'+n.toFixed(2);
+
+  function showToast(msg){const t=document.getElementById('toast');t.textContent=msg;t.classList.add('show');setTimeout(()=>t.classList.remove('show'),1700);}
+
+  document.getElementById('date').value=todayStr();
+  const savedRate=ls_get(RATE_KEY);
+  if(savedRate){document.getElementById('rate').value=savedRate;document.getElementById('tripRate').value=savedRate;}
+  document.getElementById('rate').addEventListener('change',e=>{
+    ls_set(RATE_KEY,e.target.value);
+    document.getElementById('tripRate').value=e.target.value;
+  });
+  const savedInitOdo=ls_get(INIT_ODO_KEY);
+  if(savedInitOdo) document.getElementById('initOdo').value=savedInitOdo;
+
+  function setInitOdo(){
+    const v=parseFloat(document.getElementById('initOdo').value);
+    if(isNaN(v)){showToast('Enter a valid meter reading');return;}
+    ls_set(INIT_ODO_KEY,v);
+    if(loadTrips().length===0) document.getElementById('startOdo').value=v;
+    showToast('Starting meter set to '+v+' km');
+  }
+
+  function setMode(m){
+    mode=m;
+    document.getElementById('tabOdo').classList.toggle('active',m==='odo');
+    document.getElementById('tabDist').classList.toggle('active',m==='dist');
+    document.getElementById('odoFields').style.display=m==='odo'?'block':'none';
+    document.getElementById('distFields').style.display=m==='dist'?'block':'none';
+    if(m==='odo'){
+      const trips=loadTrips();
+      if(trips.length){
+        const last=trips.reduce((a,b)=>a.id>b.id?a:b);
+        if(last.endOdo!=null) document.getElementById('startOdo').value=last.endOdo;
+      } else {
+        const savedInit=ls_get(INIT_ODO_KEY);
+        if(savedInit) document.getElementById('startOdo').value=savedInit;
+      }
+    }
+  }
+  setMode('odo');
+
+  function addTrip(){
+    const rate=parseFloat(document.getElementById('tripRate').value);
+    const date=document.getElementById('date').value||todayStr();
+    const from=document.getElementById('from').value.trim();
+    const to=document.getElementById('to').value.trim();
+    if(!rate||rate<=0){showToast('Enter a valid price per km');return;}
+
+    let distance,startOdo=null,endOdo=null;
+    if(mode==='odo'){
+      startOdo=parseFloat(document.getElementById('startOdo').value);
+      endOdo=parseFloat(document.getElementById('endOdo').value);
+      if(isNaN(startOdo)||isNaN(endOdo)){showToast('Enter start and end meter readings');return;}
+      if(endOdo<=startOdo){showToast('End reading must be greater than start');return;}
+      distance=endOdo-startOdo;
+    } else {
+      distance=parseFloat(document.getElementById('distance').value);
+      if(!distance||distance<=0){showToast('Enter a valid distance');return;}
+      if(document.getElementById('roundtrip').checked) distance*=2;
+    }
+
+    const cost=distance*rate;
+    const trips=loadTrips();
+    trips.push({id:Date.now(),date,from,to,distance,cost,rate,startOdo,endOdo});
+    saveTrips(trips);
+
+    document.getElementById('from').value='';
+    document.getElementById('to').value='';
+    document.getElementById('tripRate').value=ls_get(RATE_KEY)||'';
+    if(mode==='odo'){document.getElementById('startOdo').value=endOdo;document.getElementById('endOdo').value='';}
+    else{document.getElementById('distance').value='';document.getElementById('roundtrip').checked=false;}
+
+    render();
+    showToast('Trip added — '+distance.toFixed(1)+' km, '+fmt(cost));
+  }
+
+  function deleteTrip(id){
+    saveTrips(loadTrips().filter(t=>t.id!==id));
+    render();
+  }
+
+  function openModal(date,defaultAmt){
+    modalDate=date;
+    document.getElementById('reimbTitle').textContent='Mark '+date+' as reimbursed';
+    document.getElementById('reimbDate').value=todayStr();
+    document.getElementById('reimbAmt').value=defaultAmt.toFixed(2);
+    document.getElementById('reimbModal').classList.add('show');
+  }
+  function closeModal(){document.getElementById('reimbModal').classList.remove('show');modalDate=null;}
+  function saveReimb(){
+    const d=document.getElementById('reimbDate').value;
+    const amt=parseFloat(document.getElementById('reimbAmt').value);
+    if(!d||isNaN(amt)){showToast('Fill both fields');return;}
+    const r=loadReimb();
+    r[modalDate]={reimbursed:true,date:d,amount:amt};
+    saveReimbData(r);
+    closeModal();
+    render();
+    showToast('Marked as reimbursed');
+  }
+  function unmarkReimb(date){
+    const r=loadReimb();
+    delete r[date];
+    saveReimbData(r);
+    render();
+  }
+
+  function clearAll(){
+    if(confirm('Clear ALL trips and reimbursement data? This cannot be undone.')){
+      saveTrips([]);saveReimbData({});render();
+    }
+  }
+
+  function render(){
+    const trips=loadTrips(), reimb=loadReimb();
+    const listEl=document.getElementById('tripsList');
+    if(trips.length===0){
+      listEl.innerHTML='<div class="empty">No trips logged yet.</div>';
+      document.getElementById('sClaimed').textContent=fmt(0);
+      document.getElementById('sReimbursed').textContent=fmt(0);
+      document.getElementById('sPending').textContent=fmt(0);
+      return;
+    }
+    const byDate={};
+    trips.forEach(t=>{(byDate[t.date]=byDate[t.date]||[]).push(t);});
+    const dates=Object.keys(byDate).sort().reverse();
+
+    let html='',claimed=0,reimbursedTotal=0;
+    dates.forEach(date=>{
+      const dayTrips=byDate[date];
+      let dayTotal=0,rows='';
+      dayTrips.forEach(t=>{
+        dayTotal+=t.cost;
+        const label=(t.from||t.to)?`${t.from||'—'} → ${t.to||'—'}`:'Trip';
+        const meterInfo=t.startOdo!=null?`${t.startOdo}→${t.endOdo}`:'';
+        rows+=`<tr><td>${label}${meterInfo?`<br><span style="color:var(--muted);font-size:.72rem">${meterInfo} km</span>`:''}</td><td>${t.distance.toFixed(1)} km</td><td class="cost">${fmt(t.cost)}</td><td><button class="del" onclick="deleteTrip(${t.id})">✕</button></td></tr>`;
+      });
+      claimed+=dayTotal;
+      const rInfo=reimb[date];
+      let badge;
+      if(rInfo&&rInfo.reimbursed){
+        reimbursedTotal+=rInfo.amount;
+        badge=`<span class="badge reimbursed" onclick="unmarkReimb('${date}')">✓ Reimbursed ${fmt(rInfo.amount)} (${rInfo.date}) — tap to undo</span>`;
+      } else {
+        badge=`<span class="badge" onclick="openModal('${date}',${dayTotal})">Mark reimbursed</span>`;
+      }
+      html+=`<div class="day-group"><div class="day-header"><div class="info"><span>${date}</span></div>${badge}</div><div style="display:flex;justify-content:space-between;color:var(--muted);font-size:.78rem;margin-bottom:4px;"><span>Day total</span><span>${fmt(dayTotal)}</span></div><table><tbody>${rows}</tbody></table></div>`;
+    });
+    listEl.innerHTML=html;
+    document.getElementById('sClaimed').textContent=fmt(claimed);
+    document.getElementById('sReimbursed').textContent=fmt(reimbursedTotal);
+    document.getElementById('sPending').textContent=fmt(claimed-reimbursedTotal);
+  }
+
+  async function copySummary(){
+    const trips=loadTrips(),reimb=loadReimb();
+    if(trips.length===0){showToast('Nothing to copy');return;}
+    const byDate={};
+    trips.forEach(t=>{(byDate[t.date]=byDate[t.date]||[]).push(t);});
+    const dates=Object.keys(byDate).sort();
+    let text='Travel Reimbursement Summary\n\n',claimed=0,reimbursedTotal=0;
+    dates.forEach(date=>{
+      text+=`${date}\n`;
+      let dayTotal=0;
+      byDate[date].forEach(t=>{
+        const label=(t.from||t.to)?`${t.from||'—'} to ${t.to||'—'}`:'Trip';
+        text+=`  ${label} — ${t.distance.toFixed(1)} km — ${fmt(t.cost)}\n`;
+        dayTotal+=t.cost;
+      });
+      const r=reimb[date];
+      text+=`  Day total: ${fmt(dayTotal)}${r&&r.reimbursed?` — Reimbursed ${fmt(r.amount)} on ${r.date}`:' — Pending'}\n\n`;
+      claimed+=dayTotal;
+      if(r&&r.reimbursed) reimbursedTotal+=r.amount;
+    });
+    text+=`Total Claimed: ${fmt(claimed)}\nTotal Reimbursed: ${fmt(reimbursedTotal)}\nPending: ${fmt(claimed-reimbursedTotal)}`;
+    try{await navigator.clipboard.writeText(text);showToast('Copied to clipboard');}
+    catch(e){showToast('Could not copy — select manually');}
+  }
+
+  async function exportExcel(){
+    const trips=loadTrips(),reimb=loadReimb();
+    if(trips.length===0){showToast('Nothing to export');return;}
+    const rows=trips.slice().sort((a,b)=>a.date.localeCompare(b.date)).map(t=>{
+      const r=reimb[t.date];
+      return {
+        Date:t.date,From:t.from,To:t.to,'Distance (km)':+t.distance.toFixed(1),
+        'Rate (₹/km)':t.rate,'Cost (₹)':+t.cost.toFixed(2),
+        'Start Meter':t.startOdo??'',
+        'End Meter':t.endOdo??'',
+        'Reimbursement Status':r&&r.reimbursed?'Reimbursed':'Pending',
+        'Reimbursed Date':r&&r.reimbursed?r.date:'',
+        'Reimbursed Amount (₹)':r&&r.reimbursed?r.amount:''
+      };
+    });
+    const claimed=trips.reduce((s,t)=>s+t.cost,0);
+    const reimbursedTotal=Object.values(reimb).filter(r=>r.reimbursed).reduce((s,r)=>s+r.amount,0);
+    rows.push({});
+    rows.push({Date:'TOTAL',From:'',To:'',
+      'Distance (km)':'','Rate (₹/km)':'','Cost (₹)':+claimed.toFixed(2),
+      'Start Meter':'','End Meter':'','Reimbursement Status':'',
+      'Reimbursed Date':'','Reimbursed Amount (₹)':+reimbursedTotal.toFixed(2)});
+    const ws=XLSX.utils.json_to_sheet(rows);
+    const wb=XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb,ws,'Travel Log');
+    const buf=XLSX.write(wb,{bookType:'xlsx',type:'array'});
+    downloadBlob(new Blob([buf],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'}),`travel-reimbursement-${todayStr()}.xlsx`);
+    showToast('Excel file downloaded');
+  }
+
+  function downloadBlob(blob,filename){
+    const url=URL.createObjectURL(blob);
+    const a=document.createElement('a');
+    a.href=url;a.download=filename;
+    document.body.appendChild(a);a.click();
+    document.body.removeChild(a);
+    setTimeout(()=>URL.revokeObjectURL(url),1000);
+  }
+
+  function backupData(){
+    const payload={rate:ls_get(RATE_KEY),trips:loadTrips(),reimb:loadReimb(),exportedAt:new Date().toISOString()};
+    downloadBlob(new Blob([JSON.stringify(payload,null,2)],{type:'application/json'}),`travel-backup-${todayStr()}.json`);
+    showToast('Backup downloaded');
+  }
+
+  function restoreBackup(evt){
+    const file=evt.target.files[0];
+    if(!file) return;
+    const reader=new FileReader();
+    reader.onload=e=>{
+      try{
+        const data=JSON.parse(e.target.result);
+        if(!Array.isArray(data.trips)) throw new Error('bad format');
+        if(!confirm('This will replace your current trips and reimbursement data with the backup. Continue?')) return;
+        if(data.rate) ls_set(RATE_KEY,data.rate);
+        saveTrips(data.trips);
+        saveReimbData(data.reimb||{});
+        render();
+        showToast('Backup restored');
+      }catch(err){showToast('Invalid backup file');}
+    };
+    reader.readAsText(file);
+    evt.target.value='';
+  }
+
+  render();
+
+  if('serviceWorker' in navigator){
+    window.addEventListener('load',()=>{
+      navigator.serviceWorker.register('service-worker.js').catch(()=>{});
+    });
+  }
+</script>
+
+</body>
+</html>

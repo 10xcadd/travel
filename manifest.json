@@ -1,0 +1,18 @@
+{
+  "name": "Travel Reimbursement",
+  "short_name": "Travel Log",
+  "description": "Log business travel, calculate mileage reimbursement, and track claims.",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#f5f6f8",
+  "theme_color": "#2563eb",
+  "icons": [
+    {
+      "src": "icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ]
+}
