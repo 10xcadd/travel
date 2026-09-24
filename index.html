@@ -79,7 +79,7 @@
   <button class="secondary" onclick="setInitOdo()">Set Starting Meter</button>
 </div>
 
-<div class="card">
+<div class="card" id="entryCard">
   <div class="tabs">
     <div class="tab active" id="tabOdo" onclick="setMode('odo')">Odometer</div>
     <div class="tab" id="tabDist" onclick="setMode('dist')">Direct Distance</div>
@@ -115,7 +115,8 @@
   </div>
   <div class="hint">Prefilled from your defaults — edit here if fuel price or mileage differs for this trip.</div>
 
-  <button onclick="addTrip()">Add Trip</button>
+  <button id="addTripBtn" onclick="addTrip()">Add Trip</button>
+  <button id="cancelEditBtn" class="secondary" style="display:none;margin-top:8px;" onclick="cancelEdit()">Cancel Edit</button>
 </div>
 
 <div class="card">
@@ -164,7 +165,7 @@
 
 <script>
   const FUEL_KEY='travel_fuel_price', AVG_KEY='travel_avg_kmpl', TRIPS_KEY='travel_trips', REIMB_KEY='travel_reimb', INIT_ODO_KEY='travel_init_odo';
-  let mode='odo', modalDate=null;
+  let mode='odo', modalDate=null, editingId=null;
 
   const todayStr=()=>new Date().toISOString().slice(0,10);
   const ls_get=(k)=>{try{return localStorage.getItem(k);}catch(e){return null;}};
@@ -252,6 +253,19 @@
 
     const cost=distance*rate;
     const trips=loadTrips();
+
+    if(editingId!==null){
+      const idx=trips.findIndex(t=>t.id===editingId);
+      if(idx!==-1){
+        trips[idx]={...trips[idx],date,from,to,distance,cost,rate,fuelPrice,avg,startOdo,endOdo};
+        saveTrips(trips);
+        showToast('Trip updated');
+      }
+      cancelEdit();
+      render();
+      return;
+    }
+
     trips.push({id:Date.now(),date,from,to,distance,cost,rate,fuelPrice,avg,startOdo,endOdo});
     saveTrips(trips);
 
@@ -264,6 +278,47 @@
 
     render();
     showToast('Trip added — '+distance.toFixed(1)+' km, '+fmt(cost));
+  }
+
+  function editTrip(id){
+    const trip=loadTrips().find(t=>t.id===id);
+    if(!trip) return;
+    editingId=id;
+    setMode(trip.startOdo!=null?'odo':'dist');
+    document.getElementById('date').value=trip.date;
+    document.getElementById('from').value=trip.from||'';
+    document.getElementById('to').value=trip.to||'';
+    document.getElementById('tripFuelPrice').value=trip.fuelPrice;
+    document.getElementById('tripAvg').value=trip.avg;
+    if(trip.startOdo!=null){
+      document.getElementById('startOdo').value=trip.startOdo;
+      document.getElementById('endOdo').value=trip.endOdo;
+    } else {
+      document.getElementById('distance').value=trip.distance;
+      document.getElementById('roundtrip').checked=false;
+    }
+    document.getElementById('addTripBtn').textContent='Update Trip';
+    document.getElementById('cancelEditBtn').style.display='block';
+    document.getElementById('entryCard').scrollIntoView({behavior:'smooth',block:'start'});
+    showToast('Editing trip — update fields and tap Update Trip');
+  }
+
+  function cancelEdit(){
+    editingId=null;
+    document.getElementById('addTripBtn').textContent='Add Trip';
+    document.getElementById('cancelEditBtn').style.display='none';
+    document.getElementById('from').value='';
+    document.getElementById('to').value='';
+    document.getElementById('tripFuelPrice').value=ls_get(FUEL_KEY)||'';
+    document.getElementById('tripAvg').value=ls_get(AVG_KEY)||'30';
+    document.getElementById('distance').value='';
+    document.getElementById('roundtrip').checked=false;
+    const trips=loadTrips();
+    if(trips.length){
+      const last=trips.reduce((a,b)=>a.id>b.id?a:b);
+      if(last.endOdo!=null) document.getElementById('startOdo').value=last.endOdo;
+    }
+    document.getElementById('endOdo').value='';
   }
 
   function deleteTrip(id){
@@ -349,7 +404,7 @@
         const label=(t.from||t.to)?`${t.from||'—'} → ${t.to||'—'}`:'Trip';
         const meterInfo=t.startOdo!=null?`${t.startOdo}→${t.endOdo}`:'';
         const fuelInfo=`@ ₹${t.fuelPrice}/l, ${t.avg} km/l`;
-        rows+=`<tr><td>${label}<br><span style="color:var(--muted);font-size:.72rem">${meterInfo?meterInfo+' km · ':''}${fuelInfo}</span></td><td>${t.distance.toFixed(1)} km</td><td class="cost">${fmt(t.cost)}</td><td><button class="del" onclick="deleteTrip(${t.id})">✕</button></td></tr>`;
+        rows+=`<tr><td>${label}<br><span style="color:var(--muted);font-size:.72rem">${meterInfo?meterInfo+' km · ':''}${fuelInfo}</span></td><td>${t.distance.toFixed(1)} km</td><td class="cost">${fmt(t.cost)}</td><td style="white-space:nowrap;"><button class="del" style="color:var(--accent)" onclick="editTrip(${t.id})">✎</button><button class="del" onclick="deleteTrip(${t.id})">✕</button></td></tr>`;
       });
       claimed+=dayTotal;
       const rInfo=reimb[date];
