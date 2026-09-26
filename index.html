@@ -115,6 +115,9 @@
   </div>
   <div class="hint">Prefilled from your defaults — edit here if fuel price or mileage differs for this trip.</div>
 
+  <label for="tripNote">Notes (optional)</label>
+  <input type="text" id="tripNote" placeholder="e.g. important seminar, urgent visit">
+
   <button id="addTripBtn" onclick="addTrip()">Add Trip</button>
   <button id="cancelEditBtn" class="secondary" style="display:none;margin-top:8px;" onclick="cancelEdit()">Cancel Edit</button>
 </div>
@@ -263,6 +266,7 @@
     const date=document.getElementById('date').value||todayStr();
     const from=document.getElementById('from').value.trim();
     const to=document.getElementById('to').value.trim();
+    const note=document.getElementById('tripNote').value.trim();
     if(!fuelPrice||fuelPrice<=0){showToast('Enter a valid fuel price');return;}
     if(!avg||avg<=0){showToast('Enter a valid average (km/l)');return;}
     const rate=fuelPrice/avg;
@@ -286,7 +290,7 @@
     if(editingId!==null){
       const idx=trips.findIndex(t=>t.id===editingId);
       if(idx!==-1){
-        trips[idx]={...trips[idx],date,from,to,distance,cost,rate,fuelPrice,avg,startOdo,endOdo};
+        trips[idx]={...trips[idx],date,from,to,distance,cost,rate,fuelPrice,avg,startOdo,endOdo,note};
         saveTrips(trips);
         showToast('Trip updated');
       }
@@ -295,12 +299,13 @@
       return;
     }
 
-    trips.push({id:Date.now(),date,from,to,distance,cost,rate,fuelPrice,avg,startOdo,endOdo});
+    trips.push({id:Date.now(),date,from,to,distance,cost,rate,fuelPrice,avg,startOdo,endOdo,note});
     saveTrips(trips);
     bumpUnbacked();
 
     document.getElementById('from').value='';
     document.getElementById('to').value='';
+    document.getElementById('tripNote').value='';
     document.getElementById('tripFuelPrice').value=ls_get(FUEL_KEY)||'';
     document.getElementById('tripAvg').value=ls_get(AVG_KEY)||'30';
     if(mode==='odo'){document.getElementById('startOdo').value=endOdo;document.getElementById('endOdo').value='';}
@@ -331,6 +336,7 @@
     document.getElementById('to').value=trip.to||'';
     document.getElementById('tripFuelPrice').value=trip.fuelPrice;
     document.getElementById('tripAvg').value=trip.avg;
+    document.getElementById('tripNote').value=trip.note||'';
     if(trip.startOdo!=null){
       document.getElementById('startOdo').value=trip.startOdo;
       document.getElementById('endOdo').value=trip.endOdo;
@@ -350,6 +356,7 @@
     document.getElementById('cancelEditBtn').style.display='none';
     document.getElementById('from').value='';
     document.getElementById('to').value='';
+    document.getElementById('tripNote').value='';
     document.getElementById('tripFuelPrice').value=ls_get(FUEL_KEY)||'';
     document.getElementById('tripAvg').value=ls_get(AVG_KEY)||'30';
     document.getElementById('distance').value='';
@@ -469,7 +476,8 @@
         const label=(t.from||t.to)?`${t.from||'—'} → ${t.to||'—'}`:'Trip';
         const meterInfo=t.startOdo!=null?`${t.startOdo}→${t.endOdo}`:'';
         const fuelInfo=`@ ₹${t.fuelPrice}/l, ${t.avg} km/l`;
-        rows+=`<tr><td>${label}<br><span style="color:var(--muted);font-size:.72rem">${meterInfo?meterInfo+' km · ':''}${fuelInfo}</span></td><td>${t.distance.toFixed(1)} km</td><td class="cost">${fmt(t.cost)}</td><td style="white-space:nowrap;"><button class="del" style="color:var(--accent)" onclick="editTrip(${t.id})">✎</button><button class="del" onclick="deleteTrip(${t.id})">✕</button></td></tr>`;
+        const noteHtml=t.note?`<br><span style="color:var(--text);font-size:.72rem;">📝 ${t.note}</span>`:'';
+        rows+=`<tr><td>${label}<br><span style="color:var(--muted);font-size:.72rem">${meterInfo?meterInfo+' km · ':''}${fuelInfo}</span>${noteHtml}</td><td>${t.distance.toFixed(1)} km</td><td class="cost">${fmt(t.cost)}</td><td style="white-space:nowrap;"><button class="del" style="color:var(--accent)" onclick="editTrip(${t.id})">✎</button><button class="del" onclick="deleteTrip(${t.id})">✕</button></td></tr>`;
       });
       claimed+=dayTotal;
       const rInfo=reimb[date];
@@ -514,7 +522,7 @@
       let dayTotal=0;
       byDate[date].forEach(t=>{
         const label=(t.from||t.to)?`${t.from||'—'} to ${t.to||'—'}`:'Trip';
-        text+=`  ${label} — ${t.distance.toFixed(1)} km — ${fmt(t.cost)}\n`;
+        text+=`  ${label} — ${t.distance.toFixed(1)} km — ${fmt(t.cost)}${t.note?` — 📝 ${t.note}`:''}\n`;
         dayTotal+=t.cost;
       });
       const r=reimb[date];
@@ -538,10 +546,11 @@
         'Rate (₹/km)':+t.rate.toFixed(2),'Cost (₹)':+t.cost.toFixed(2),
         'Start Meter':t.startOdo??'',
         'End Meter':t.endOdo??'',
+        'Trip Notes':t.note||'',
         'Reimbursement Status':r&&r.reimbursed?'Reimbursed':'Pending',
         'Reimbursed Date':r&&r.reimbursed?r.date:'',
         'Reimbursed Amount (₹)':r&&r.reimbursed?r.amount:'',
-        'Notes':r&&r.reimbursed?(r.note||''):''
+        'Reimbursement Notes':r&&r.reimbursed?(r.note||''):''
       };
     });
     const claimed=trips.reduce((s,t)=>s+t.cost,0);
@@ -550,8 +559,8 @@
     rows.push({});
     rows.push({Date:'TOTAL',From:'',To:'',
       'Distance (km)':'','Fuel Price (₹/l)':'','Average (km/l)':'','Rate (₹/km)':'','Cost (₹)':+claimed.toFixed(2),
-      'Start Meter':'','End Meter':'','Reimbursement Status':'',
-      'Reimbursed Date':'','Reimbursed Amount (₹)':+reimbursedTotal.toFixed(2),'Notes':''});
+      'Start Meter':'','End Meter':'','Trip Notes':'','Reimbursement Status':'',
+      'Reimbursed Date':'','Reimbursed Amount (₹)':+reimbursedTotal.toFixed(2),'Reimbursement Notes':''});
     const ws=XLSX.utils.json_to_sheet(rows);
     const wb=XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb,ws,'Travel Log');
