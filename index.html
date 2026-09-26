@@ -161,10 +161,39 @@
   </div>
 </div>
 
+<div class="modal-bg" id="confirmModal">
+  <div class="modal">
+    <h3 id="confirmTitle">Delete this trip?</h3>
+    <p id="confirmMsg" style="font-size:.85rem;color:var(--muted);margin:0 0 14px;">Your data lives only on this device — back it up first just in case.</p>
+    <div class="btn-row">
+      <button class="secondary" onclick="closeConfirmModal()">Cancel</button>
+    </div>
+    <div class="btn-row" style="margin-top:8px;">
+      <button class="secondary" onclick="backupThenConfirm()">Backup, then Delete</button>
+      <button style="background:var(--danger)" onclick="proceedConfirm()">Delete Anyway</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-bg" id="backupReminderModal">
+  <div class="modal">
+    <h3>💾 Backup reminder</h3>
+    <p style="font-size:.85rem;color:var(--muted);margin:0 0 14px;">You've logged a few more entries since your last backup. Save a copy now so nothing's ever lost if the app's storage gets cleared.</p>
+    <div class="btn-row">
+      <button class="secondary" onclick="closeBackupReminder()">Later</button>
+      <button class="ok" onclick="backupData();closeBackupReminder();">Backup Now</button>
+    </div>
+  </div>
+</div>
+
 <div class="toast" id="toast"></div>
 
 <script>
-  const FUEL_KEY='travel_fuel_price', AVG_KEY='travel_avg_kmpl', TRIPS_KEY='travel_trips', REIMB_KEY='travel_reimb', INIT_ODO_KEY='travel_init_odo';
+  const FUEL_KEY='travel_fuel_price', AVG_KEY='travel_avg_kmpl', TRIPS_KEY='travel_trips', REIMB_KEY='travel_reimb', INIT_ODO_KEY='travel_init_odo', UNBACKED_KEY='travel_unbacked_count';
+
+  if(navigator.storage && navigator.storage.persist){
+    navigator.storage.persist().catch(()=>{});
+  }
   let mode='odo', modalDate=null, editingId=null;
 
   const todayStr=()=>new Date().toISOString().slice(0,10);
@@ -268,6 +297,7 @@
 
     trips.push({id:Date.now(),date,from,to,distance,cost,rate,fuelPrice,avg,startOdo,endOdo});
     saveTrips(trips);
+    bumpUnbacked();
 
     document.getElementById('from').value='';
     document.getElementById('to').value='';
@@ -278,6 +308,17 @@
 
     render();
     showToast('Trip added — '+distance.toFixed(1)+' km, '+fmt(cost));
+  }
+
+  function bumpUnbacked(){
+    const c=parseInt(ls_get(UNBACKED_KEY)||'0')+1;
+    ls_set(UNBACKED_KEY,c);
+    if(c%3===0){
+      document.getElementById('backupReminderModal').classList.add('show');
+    }
+  }
+  function closeBackupReminder(){
+    document.getElementById('backupReminderModal').classList.remove('show');
   }
 
   function editTrip(id){
@@ -321,9 +362,31 @@
     document.getElementById('endOdo').value='';
   }
 
+  let pendingDeleteType=null, pendingDeleteId=null;
+
   function deleteTrip(id){
-    saveTrips(loadTrips().filter(t=>t.id!==id));
+    pendingDeleteType='trip';
+    pendingDeleteId=id;
+    document.getElementById('confirmTitle').textContent='Delete this trip?';
+    document.getElementById('confirmMsg').textContent='Your data lives only on this device — back it up first just in case.';
+    document.getElementById('confirmModal').classList.add('show');
+  }
+  function closeConfirmModal(){
+    document.getElementById('confirmModal').classList.remove('show');
+    pendingDeleteType=null;pendingDeleteId=null;
+  }
+  function proceedConfirm(){
+    if(pendingDeleteType==='trip'){
+      saveTrips(loadTrips().filter(t=>t.id!==pendingDeleteId));
+    } else if(pendingDeleteType==='all'){
+      saveTrips([]);saveReimbData({});
+    }
+    closeConfirmModal();
     render();
+  }
+  function backupThenConfirm(){
+    backupData();
+    proceedConfirm();
   }
 
   function openModal(date,defaultAmt){
@@ -362,9 +425,11 @@
   }
 
   function clearAll(){
-    if(confirm('Clear ALL trips and reimbursement data? This cannot be undone.')){
-      saveTrips([]);saveReimbData({});render();
-    }
+    pendingDeleteType='all';
+    pendingDeleteId=null;
+    document.getElementById('confirmTitle').textContent='Clear ALL trips and reimbursement data?';
+    document.getElementById('confirmMsg').textContent='This cannot be undone. Your data lives only on this device — back it up first just in case.';
+    document.getElementById('confirmModal').classList.add('show');
   }
 
   function getClearedTill(){
@@ -507,6 +572,7 @@
   function backupData(){
     const payload={fuelPrice:ls_get(FUEL_KEY),avg:ls_get(AVG_KEY),trips:loadTrips(),reimb:loadReimb(),exportedAt:new Date().toISOString()};
     downloadBlob(new Blob([JSON.stringify(payload,null,2)],{type:'application/json'}),`travel-backup-${todayStr()}.json`);
+    ls_set(UNBACKED_KEY,'0');
     showToast('Backup downloaded');
   }
 
