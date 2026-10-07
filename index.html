@@ -39,8 +39,8 @@
   .day-header .info{display:flex;flex-direction:column;}
   .badge{font-size:.8rem;font-weight:600;padding:6px 12px;border-radius:20px;background:var(--accent-light);color:var(--accent);cursor:pointer;white-space:nowrap;}
   .badge.reimbursed{background:var(--ok-light);color:var(--ok);}
-  .summary-grid{display:flex;gap:10px;margin-bottom:4px;}
-  .summary-grid>div{flex:1;text-align:center;}
+  .summary-grid{display:flex;gap:10px;margin-bottom:4px;flex-wrap:wrap;}
+  .summary-grid>div{flex:1;min-width:70px;text-align:center;}
   .summary-grid .val{font-size:1.05rem;font-weight:700;}
   .summary-grid .lbl{font-size:.72rem;color:var(--muted);}
   .empty{color:var(--muted);font-size:.9rem;text-align:center;padding:16px 0;}
@@ -62,6 +62,7 @@
     <div><div class="val" id="sClaimed">₹0</div><div class="lbl">Claimed</div></div>
     <div><div class="val" id="sReimbursed">₹0</div><div class="lbl">Reimbursed</div></div>
     <div><div class="val" id="sPending">₹0</div><div class="lbl">Pending</div></div>
+    <div><div class="val" id="sKm">0 km</div><div class="lbl">Total KM</div></div>
   </div>
   <div style="text-align:center;font-size:.8rem;color:var(--muted);margin-top:8px;border-top:1px solid var(--border);padding-top:8px;" id="clearedTill">Cleared till: —</div>
 </div>
@@ -123,6 +124,11 @@
 </div>
 
 <div class="card">
+  <label for="monthFilter">View month</label>
+  <select id="monthFilter" onchange="render()">
+    <option value="">All months</option>
+  </select>
+  <div id="monthSummary" style="text-align:center;font-size:.85rem;color:var(--muted);margin:-4px 0 10px;"></div>
   <div class="hint" style="margin-top:0;">Tap 💰 <b>Mark Reimbursed</b> under any date once you've received payment for that day's trips — you'll enter the amount and date received.</div>
   <div id="tripsList"></div>
 </div>
@@ -451,23 +457,54 @@
     return cleared;
   }
 
+  function populateMonthFilter(trips){
+    const sel=document.getElementById('monthFilter');
+    const prev=sel.value;
+    const months=[...new Set(trips.map(t=>t.date.slice(0,7)))].sort().reverse();
+    const monthName=(m)=>{
+      const [y,mo]=m.split('-');
+      return new Date(+y,+mo-1,1).toLocaleDateString('en-US',{month:'long',year:'numeric'});
+    };
+    sel.innerHTML='<option value="">All months</option>'+months.map(m=>`<option value="${m}">${monthName(m)}</option>`).join('');
+    if(months.includes(prev)) sel.value=prev;
+  }
+
   function render(){
-    const trips=loadTrips(), reimb=loadReimb();
+    const allTrips=loadTrips(), reimb=loadReimb();
     const listEl=document.getElementById('tripsList');
+    populateMonthFilter(allTrips);
+    const selectedMonth=document.getElementById('monthFilter').value;
+    const trips=selectedMonth?allTrips.filter(t=>t.date.startsWith(selectedMonth)):allTrips;
+
     const clearedTill=getClearedTill();
     document.getElementById('clearedTill').textContent=clearedTill?`✓ Cleared till ${clearedTill}`:'Cleared till: —';
+
+    const totalKm=allTrips.reduce((s,t)=>s+t.distance,0);
+    document.getElementById('sKm').textContent=totalKm.toFixed(1)+' km';
+    const allClaimed=allTrips.reduce((s,t)=>s+t.cost,0);
+    const allReimbursed=Object.values(reimb).filter(r=>r.reimbursed).reduce((s,r)=>s+r.amount,0);
+    document.getElementById('sClaimed').textContent=fmt(allClaimed);
+    document.getElementById('sReimbursed').textContent=fmt(allReimbursed);
+    document.getElementById('sPending').textContent=fmt(allClaimed-allReimbursed);
+
+    const monthSummaryEl=document.getElementById('monthSummary');
+    if(selectedMonth){
+      const mKm=trips.reduce((s,t)=>s+t.distance,0);
+      const mCost=trips.reduce((s,t)=>s+t.cost,0);
+      monthSummaryEl.textContent=`This month: ${mKm.toFixed(1)} km · ${fmt(mCost)}`;
+    } else {
+      monthSummaryEl.textContent='';
+    }
+
     if(trips.length===0){
-      listEl.innerHTML='<div class="empty">No trips logged yet.</div>';
-      document.getElementById('sClaimed').textContent=fmt(0);
-      document.getElementById('sReimbursed').textContent=fmt(0);
-      document.getElementById('sPending').textContent=fmt(0);
+      listEl.innerHTML=allTrips.length===0?'<div class="empty">No trips logged yet.</div>':'<div class="empty">No trips for this month.</div>';
       return;
     }
     const byDate={};
     trips.forEach(t=>{(byDate[t.date]=byDate[t.date]||[]).push(t);});
     const dates=Object.keys(byDate).sort().reverse();
 
-    let html='',claimed=0,reimbursedTotal=0;
+    let html='';
     dates.forEach(date=>{
       const dayTrips=byDate[date];
       let dayTotal=0,rows='';
@@ -479,11 +516,9 @@
         const noteHtml=t.note?`<br><span style="color:var(--text);font-size:.72rem;">📝 ${t.note}</span>`:'';
         rows+=`<tr><td>${label}<br><span style="color:var(--muted);font-size:.72rem">${meterInfo?meterInfo+' km · ':''}${fuelInfo}</span>${noteHtml}</td><td>${t.distance.toFixed(1)} km</td><td class="cost">${fmt(t.cost)}</td><td style="white-space:nowrap;"><button class="del" style="color:var(--accent)" onclick="editTrip(${t.id})">✎</button><button class="del" onclick="deleteTrip(${t.id})">✕</button></td></tr>`;
       });
-      claimed+=dayTotal;
       const rInfo=reimb[date];
       let badge;
       if(rInfo&&rInfo.reimbursed){
-        reimbursedTotal+=rInfo.amount;
         const noteHtml=rInfo.note?`<br><span style="font-weight:400;font-size:.72rem;">📝 ${rInfo.note}</span>`:'';
         badge=`<span class="badge reimbursed" onclick="openModal('${date}',${dayTotal})">✓ Reimbursed ${fmt(rInfo.amount)} (${rInfo.date}) — tap to edit${noteHtml}</span>`;
       } else {
@@ -492,9 +527,6 @@
       html+=`<div class="day-group"><div class="day-header" style="align-items:flex-start;flex-direction:column;gap:6px;"><div style="display:flex;justify-content:space-between;width:100%;"><span style="font-weight:600;color:var(--text);">${date}</span><span>Day total: ${fmt(dayTotal)}</span></div>${badge}</div><table><tbody>${rows}</tbody></table></div>`;
     });
     listEl.innerHTML=html;
-    document.getElementById('sClaimed').textContent=fmt(claimed);
-    document.getElementById('sReimbursed').textContent=fmt(reimbursedTotal);
-    document.getElementById('sPending').textContent=fmt(claimed-reimbursedTotal);
   }
 
   function getRangeFilteredTrips(){
@@ -565,7 +597,7 @@
     const wb=XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb,ws,'Travel Log');
     const buf=XLSX.write(wb,{bookType:'xlsx',type:'array'});
-    downloadBlob(new Blob([buf],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'}),`travel-reimbursement-${todayStr()}.xlsx`);
+downloadBlob(new Blob([buf],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'}),`travel-reimbursement-${todayStr()}.xlsx`);
     showToast('Excel file downloaded');
   }
 
